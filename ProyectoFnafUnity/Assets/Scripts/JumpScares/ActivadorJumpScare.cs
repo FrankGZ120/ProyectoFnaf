@@ -28,7 +28,7 @@ public class ActivadorJumpScare : MonoBehaviour
                 objetoJumpScareJugador_1.SetActive(true);
 
                 GameObject copiaJumpScare = Instantiate(prefabJumpScareModelo, objetoJumpScareJugador_1.transform);
-                HacerDaño();
+                HacerDaÃ±o();
                 Debug.Log(jugador.vida);
                 Destroy(copiaJumpScare, 1.2f);
                 Invoke(nameof(ApagarObjetoJugador), 2f);
@@ -45,7 +45,7 @@ public class ActivadorJumpScare : MonoBehaviour
         }
     }
 
-    public void HacerDaño()
+    public void HacerDaÃ±o()
     {
         jugador.vida--;
     }
