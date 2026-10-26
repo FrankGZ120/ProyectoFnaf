@@ -1,237 +1,66 @@
+
+using System;
 using System.Collections;
 using System.IO;
-using System.Runtime.InteropServices;
-using System.Text;
-
+using System.Diagnostics;
 using UnityEngine;
 using UnityEngine.XR;
 using UnityEngine.XR.Management;
+using UnityEngine.SceneManagement;
 
+using Debug = UnityEngine.Debug;
 
 public class LanzadorJuegoPCVR : MonoBehaviour
 {
-    // =====================================================
-    // REGRESO AL LOBBY CON Y
-    // =====================================================
+    // ============================================
+    // ESTADO
+    // ============================================
 
-    [Header("Regreso al Lobby")]
+    private bool abriendo = false;
+    private bool salioHaciaJuego = false;
+    private bool lobbyPausado = false;
+    private bool reiniciandoLobby = false;
 
-    [Tooltip(
-        "Activalo solamente dentro de los juegos. " +
-        "En el Lobby dejalo apagado."
-    )]
-    public bool regresarConYIzquierda = false;
-
-
-    [Tooltip(
-        "Ruta RELATIVA desde el EXE del juego actual hasta el Lobby."
-    )]
-    public string rutaRelativaLobby =
-        @"..\..\LOBBYEXES\LobbyCasitasDelTerror.exe";
-
-
-    // =====================================================
-    // TIEMPOS
-    // =====================================================
-
-    [Header("Tiempos")]
-
-    public float esperaLiberarXR = 0.8f;
-
-    public float esperaConfirmarProceso = 1.5f;
-
-
-    // =====================================================
-    // VARIABLES INTERNAS
-    // =====================================================
+    // ============================================
+    // CONTROL IZQUIERDO - BOTON Y
+    // ============================================
 
     private InputDevice controlIzquierdo;
-
     private bool yAnterior = false;
 
-    private bool cambiandoAplicacion = false;
+    private static bool esperarSoltarY = false;
 
-
-    // =====================================================
-    // WINDOWS API
-    // =====================================================
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct STARTUPINFO
-    {
-        public int cb;
-
-        public System.IntPtr lpReserved;
-        public System.IntPtr lpDesktop;
-        public System.IntPtr lpTitle;
-
-        public int dwX;
-        public int dwY;
-        public int dwXSize;
-        public int dwYSize;
-        public int dwXCountChars;
-        public int dwYCountChars;
-        public int dwFillAttribute;
-        public int dwFlags;
-
-        public short wShowWindow;
-        public short cbReserved2;
-
-        public System.IntPtr lpReserved2;
-        public System.IntPtr hStdInput;
-        public System.IntPtr hStdOutput;
-        public System.IntPtr hStdError;
-    }
-
-
-    [StructLayout(LayoutKind.Sequential)]
-    private struct PROCESS_INFORMATION
-    {
-        public System.IntPtr hProcess;
-        public System.IntPtr hThread;
-
-        public int dwProcessId;
-        public int dwThreadId;
-    }
-
-
-    [DllImport(
-        "kernel32.dll",
-        CharSet = CharSet.Unicode,
-        SetLastError = true
-    )]
-    private static extern bool CreateProcessW(
-        string lpApplicationName,
-        StringBuilder lpCommandLine,
-        System.IntPtr lpProcessAttributes,
-        System.IntPtr lpThreadAttributes,
-        bool bInheritHandles,
-        uint dwCreationFlags,
-        System.IntPtr lpEnvironment,
-        string lpCurrentDirectory,
-        ref STARTUPINFO lpStartupInfo,
-        out PROCESS_INFORMATION lpProcessInformation
-    );
-
-
-    [DllImport(
-        "kernel32.dll",
-        SetLastError = true
-    )]
-    private static extern uint WaitForSingleObject(
-        System.IntPtr hHandle,
-        uint dwMilliseconds
-    );
-
-
-    [DllImport(
-        "kernel32.dll",
-        SetLastError = true
-    )]
-    private static extern bool CloseHandle(
-        System.IntPtr hObject
-    );
-
-
-    [DllImport("kernel32.dll")]
-    private static extern uint GetCurrentProcessId();
-
-
-    [DllImport(
-        "kernel32.dll",
-        SetLastError = true
-    )]
-    private static extern System.IntPtr OpenProcess(
-        uint dwDesiredAccess,
-        bool bInheritHandle,
-        uint dwProcessId
-    );
-
-
-    [DllImport(
-        "kernel32.dll",
-        SetLastError = true
-    )]
-    private static extern bool TerminateProcess(
-        System.IntPtr hProcess,
-        uint uExitCode
-    );
-
-
-    private const uint WAIT_TIMEOUT =
-        0x00000102;
-
-
-    private const uint PROCESS_TERMINATE =
-        0x0001;
-
-
-    // =====================================================
+    // ============================================
     // START
-    // =====================================================
+    // ============================================
 
-    void Start()
+    private void Start()
     {
         Application.runInBackground = true;
+        BuscarControlIzquierdo();
 
-
-        if (regresarConYIzquierda)
-        {
-            BuscarControlIzquierdo();
-        }
+        Debug.Log("LOBBY INICIADO");
     }
 
+    // ============================================
+    // DETECTAR BOTON Y
+    // ============================================
 
-    // =====================================================
-    // UPDATE
-    // =====================================================
-
-    void Update()
+    private void Update()
     {
-        if (!regresarConYIzquierda)
+        if (reiniciandoLobby || abriendo)
             return;
-
 
         if (!controlIzquierdo.isValid)
         {
             BuscarControlIzquierdo();
+            yAnterior = false;
         }
 
+        if (!controlIzquierdo.isValid)
+            return;
 
-        LeerBotonY();
-    }
-
-
-    // =====================================================
-    // BUSCAR CONTROL IZQUIERDO
-    // =====================================================
-
-    void BuscarControlIzquierdo()
-    {
-        controlIzquierdo =
-            InputDevices.GetDeviceAtXRNode(
-                XRNode.LeftHand
-            );
-
-
-        if (controlIzquierdo.isValid)
-        {
-            Debug.Log(
-                "CONTROL IZQUIERDO DETECTADO: " +
-                controlIzquierdo.name
-            );
-        }
-    }
-
-
-    // =====================================================
-    // BOTON Y
-    // =====================================================
-
-    void LeerBotonY()
-    {
         bool yPresionado = false;
-
 
         bool recibido =
             controlIzquierdo.TryGetFeatureValue(
@@ -239,443 +68,476 @@ public class LanzadorJuegoPCVR : MonoBehaviour
                 out yPresionado
             );
 
-
         if (!recibido)
             return;
 
+        // Evitar reinicios repetidos si Y sigue
+        // presionado despues de recargar la escena.
+
+        if (esperarSoltarY)
+        {
+            if (!yPresionado)
+            {
+                esperarSoltarY = false;
+            }
+
+            yAnterior = yPresionado;
+            return;
+        }
 
         if (yPresionado && !yAnterior)
         {
             Debug.Log(
-                "Y IZQUIERDA -> REGRESANDO AL LOBBY"
+                "BOTON Y PRESIONADO - REINICIANDO LOBBY"
             );
 
-
-            // =============================================
-            // SOLO PARA REGRESAR AL LOBBY
-            // =============================================
-
-            LanzarRuta(
-                rutaRelativaLobby
-            );
+            esperarSoltarY = true;
+            ReiniciarLobby();
+            return;
         }
 
-
-        yAnterior =
-            yPresionado;
+        yAnterior = yPresionado;
     }
 
-
-    // =====================================================
-    // FUNCION UNIVERSAL
-    // =====================================================
-    //
-    // Las puertas también usan esta función.
-    //
-    // DestinoJuegoPuerta manda:
-    //
-    // ..\Equipos\EXEEQUIPO4\Equipo4.exe
-    //
-    // Y para regresar:
-    //
-    // ..\..\LOBBYEXES\LobbyCasitasDelTerror.exe
-    //
-    // =====================================================
-
-    public void LanzarRuta(
-        string rutaRelativa
-    )
+    private void BuscarControlIzquierdo()
     {
-        if (cambiandoAplicacion)
+        controlIzquierdo =
+            InputDevices.GetDeviceAtXRNode(
+                XRNode.LeftHand
+            );
+    }
+
+    // ============================================
+    // DETECTAR REGRESO DESDE OTRO JUEGO
+    // ============================================
+
+    private void OnApplicationPause(bool pausado)
+    {
+        if (!salioHaciaJuego || reiniciandoLobby)
+            return;
+
+        if (pausado)
+        {
+            lobbyPausado = true;
+
+            Debug.Log(
+                "LOBBY PAUSADO - JUEGO EXTERNO"
+            );
+        }
+        else if (lobbyPausado)
+        {
+            ReiniciarLobby();
+        }
+    }
+
+    // ============================================
+    // RESPALDO AL RECUPERAR EL FOCO
+    // ============================================
+
+    private void OnApplicationFocus(bool tieneFoco)
+    {
+        if (!salioHaciaJuego || reiniciandoLobby)
+            return;
+
+        if (!tieneFoco)
+        {
+            lobbyPausado = true;
+        }
+        else if (lobbyPausado)
+        {
+            ReiniciarLobby();
+        }
+    }
+
+    // ============================================
+    // REINICIAR LOBBY
+    // ============================================
+
+    public void ReiniciarLobby()
+    {
+        if (reiniciandoLobby)
+            return;
+
+        reiniciandoLobby = true;
+
+        salioHaciaJuego = false;
+        lobbyPausado = false;
+        abriendo = false;
+
+        Debug.Log(
+            "REINICIANDO ESCENA DEL LOBBY"
+        );
+
+        Scene escena =
+            SceneManager.GetActiveScene();
+
+        SceneManager.LoadScene(
+            escena.buildIndex
+        );
+    }
+
+    // ============================================
+    // COMPATIBILIDAD CON DOS PARAMETROS
+    // ============================================
+
+    public void LanzarDestino(
+        string rutaPC,
+        string packageName)
+    {
+        LanzarDestino(
+            rutaPC,
+            packageName,
+            "com.unity3d.player.UnityPlayerGameActivity"
+        );
+    }
+
+    // ============================================
+    // LANZADOR UNIVERSAL
+    // ============================================
+
+    public void LanzarDestino(
+        string rutaPC,
+        string packageName,
+        string activityName)
+    {
+        if (abriendo || reiniciandoLobby)
+            return;
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+
+        // ========================================
+        // META QUEST STANDALONE
+        // ========================================
+
+        if (string.IsNullOrWhiteSpace(packageName) ||
+            string.IsNullOrWhiteSpace(activityName))
+        {
+            Debug.LogError(
+                "FALTA PACKAGE NAME O ACTIVITY NAME"
+            );
+            return;
+        }
+
+        abriendo = true;
+
+        bool solicitudEnviada = false;
+
+        try
+        {
+            using (
+                AndroidJavaClass unityPlayer =
+                    new AndroidJavaClass(
+                        "com.unity3d.player.UnityPlayer"
+                    )
+            )
+            using (
+                AndroidJavaObject activity =
+                    unityPlayer.GetStatic<AndroidJavaObject>(
+                        "currentActivity"
+                    )
+            )
+            using (
+                AndroidJavaObject intent =
+                    new AndroidJavaObject(
+                        "android.content.Intent"
+                    )
+            )
+            {
+                if (activity == null)
+                {
+                    throw new Exception(
+                        "NO SE ENCONTRO currentActivity"
+                    );
+                }
+
+                // ====================================
+                // PACKAGE NAME + ACTIVITY NAME
+                // ====================================
+
+                intent.Call<AndroidJavaObject>(
+                    "setClassName",
+                    packageName.Trim(),
+                    activityName.Trim()
+                );
+
+                // FLAG_ACTIVITY_NEW_TASK
+
+                intent.Call<AndroidJavaObject>(
+                    "addFlags",
+                    0x10000000
+                );
+
+                Debug.Log(
+                    "ABRIENDO APK: " + packageName
+                );
+
+                // Preparar deteccion de regreso
+
+                salioHaciaJuego = true;
+                lobbyPausado = false;
+
+                // ====================================
+                // ABRIR APK
+                // ====================================
+
+                activity.Call(
+                    "startActivity",
+                    intent
+                );
+
+                solicitudEnviada = true;
+
+                Debug.Log(
+                    "SOLICITUD DE APERTURA ENVIADA: " +
+                    packageName
+                );
+
+                // No llamar finish ni Application.Quit.
+                // Queremos que Android pueda conservar
+                // y reanudar el lobby.
+            }
+        }
+        catch (Exception error)
+        {
+            Debug.LogError(
+                "ERROR ABRIENDO APK:\n" + error
+            );
+
+            salioHaciaJuego = false;
+            lobbyPausado = false;
+        }
+
+        if (!solicitudEnviada)
         {
             Debug.LogWarning(
-                "YA HAY UN CAMBIO DE APLICACION EN CURSO"
+                "NO SE PUDO SOLICITAR LA APERTURA."
             );
-
-            return;
         }
 
+        abriendo = false;
 
-        if (string.IsNullOrWhiteSpace(
-            rutaRelativa
-        ))
+#elif UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
+
+        // ========================================
+        // WINDOWS PCVR / QUEST LINK
+        // ========================================
+
+        if (string.IsNullOrWhiteSpace(rutaPC))
         {
             Debug.LogError(
-                "LA RUTA RELATIVA ESTA VACIA"
+                "FALTA RUTA DEL EXE"
             );
-
             return;
         }
-
-
-        // =================================================
-        // CARPETA DEL EXE QUE ESTA CORRIENDO
-        // =================================================
-
-        string carpetaExeActual =
-            Directory.GetParent(
-                Application.dataPath
-            ).FullName;
-
-
-        // =================================================
-        // RESOLVER RUTA RELATIVA
-        // =================================================
-
-        string rutaCompleta =
-            Path.GetFullPath(
-                Path.Combine(
-                    carpetaExeActual,
-                    rutaRelativa
-                )
-            );
-
-
-        Debug.Log(
-            "CARPETA DEL EXE ACTUAL:\n" +
-            carpetaExeActual
-        );
-
-
-        Debug.Log(
-            "RUTA RELATIVA RECIBIDA:\n" +
-            rutaRelativa
-        );
-
-
-        Debug.Log(
-            "RUTA FINAL:\n" +
-            rutaCompleta
-        );
-
 
         StartCoroutine(
-            CambiarAplicacion(
-                rutaCompleta
-            )
+            AbrirJuegoWindows(rutaPC)
         );
-    }
-
-
-    // =====================================================
-    // CAMBIAR APLICACION
-    // =====================================================
-
-    IEnumerator CambiarAplicacion(
-        string rutaDestino
-    )
-    {
-        cambiandoAplicacion = true;
-
-
-        // =================================================
-        // 1. VERIFICAR DESTINO
-        // =================================================
-
-        if (!File.Exists(
-            rutaDestino
-        ))
-        {
-            Debug.LogError(
-                "NO EXISTE EL EXE:\n" +
-                rutaDestino
-            );
-
-
-            cambiandoAplicacion = false;
-
-            yield break;
-        }
-
-
-        Debug.Log(
-            "DESTINO ENCONTRADO:\n" +
-            rutaDestino
-        );
-
-
-        // =================================================
-        // 2. LIBERAR OPENXR
-        // =================================================
-
-        XRManagerSettings manager = null;
-
-
-        if (XRGeneralSettings.Instance != null)
-        {
-            manager =
-                XRGeneralSettings
-                    .Instance
-                    .Manager;
-        }
-
-
-        if (manager != null &&
-            manager.isInitializationComplete)
-        {
-            Debug.Log(
-                "LIBERANDO XR..."
-            );
-
-
-            manager.StopSubsystems();
-
-            manager.DeinitializeLoader();
-        }
-
-
-        yield return
-            new WaitForSecondsRealtime(
-                esperaLiberarXR
-            );
-
-
-        // =================================================
-        // 3. PREPARAR EXE
-        // =================================================
-
-        STARTUPINFO startup =
-            new STARTUPINFO();
-
-
-        startup.cb =
-            Marshal.SizeOf(
-                typeof(STARTUPINFO)
-            );
-
-
-        StringBuilder lineaComandos =
-            new StringBuilder(
-                "\"" +
-                rutaDestino +
-                "\""
-            );
-
-
-        PROCESS_INFORMATION proceso;
-
-
-        // =================================================
-        // 4. ABRIR DESTINO
-        // =================================================
-
-        bool abierto =
-            CreateProcessW(
-                rutaDestino,
-                lineaComandos,
-                System.IntPtr.Zero,
-                System.IntPtr.Zero,
-                false,
-                0,
-                System.IntPtr.Zero,
-                Path.GetDirectoryName(
-                    rutaDestino
-                ),
-                ref startup,
-                out proceso
-            );
-
-
-        if (!abierto)
-        {
-            int error =
-                Marshal.GetLastWin32Error();
-
-
-            Debug.LogError(
-                "NO SE PUDO ABRIR EL DESTINO. " +
-                "ERROR WINDOWS: " +
-                error
-            );
-
-
-            cambiandoAplicacion = false;
-
-
-            yield return
-                StartCoroutine(
-                    RecuperarXR()
-                );
-
-
-            yield break;
-        }
-
-
-        // No necesitamos el thread handle.
-        CloseHandle(
-            proceso.hThread
-        );
-
-
-        Debug.Log(
-            "NUEVO EXE ABIERTO. PID: " +
-            proceso.dwProcessId
-        );
-
-
-        Debug.Log(
-            "RUTA EJECUTADA:\n" +
-            rutaDestino
-        );
-
-
-        // =================================================
-        // 5. ESPERAR Y CONFIRMAR
-        // =================================================
-
-        yield return
-            new WaitForSecondsRealtime(
-                esperaConfirmarProceso
-            );
-
-
-        bool sigueVivo =
-            WaitForSingleObject(
-                proceso.hProcess,
-                0
-            ) == WAIT_TIMEOUT;
-
-
-        if (!sigueVivo)
-        {
-            Debug.LogError(
-                "EL NUEVO EXE SE CERRO. " +
-                "NO CIERRO LA APP ACTUAL."
-            );
-
-
-            CloseHandle(
-                proceso.hProcess
-            );
-
-
-            cambiandoAplicacion = false;
-
-
-            yield return
-                StartCoroutine(
-                    RecuperarXR()
-                );
-
-
-            yield break;
-        }
-
-
-        CloseHandle(
-            proceso.hProcess
-        );
-
-
-        Debug.Log(
-            "CAMBIO CORRECTO. CERRANDO APP ACTUAL."
-        );
-
-
-        // =================================================
-        // 6. CERRAR APP ACTUAL
-        // =================================================
-
-        CerrarAplicacionActual();
-    }
-
-
-    // =====================================================
-    // CERRAR APP ACTUAL
-    // =====================================================
-
-    void CerrarAplicacionActual()
-    {
-#if UNITY_EDITOR
-
-        UnityEditor.EditorApplication.isPlaying =
-            false;
 
 #else
 
-        uint pid =
-            GetCurrentProcessId();
-
-
-        System.IntPtr handle =
-            OpenProcess(
-                PROCESS_TERMINATE,
-                false,
-                pid
-            );
-
-
-        if (handle != System.IntPtr.Zero)
-        {
-            TerminateProcess(
-                handle,
-                0
-            );
-
-
-            CloseHandle(
-                handle
-            );
-        }
-        else
-        {
-            Application.Quit();
-        }
+        Debug.LogError(
+            "PLATAFORMA NO SOPORTADA: " +
+            Application.platform
+        );
 
 #endif
     }
 
+    // ============================================
+    // ABRIR JUEGO EN WINDOWS
+    // ============================================
 
-    // =====================================================
-    // RECUPERAR XR SI FALLA EL NUEVO EXE
-    // =====================================================
+#if UNITY_STANDALONE_WIN || UNITY_EDITOR_WIN
 
-    IEnumerator RecuperarXR()
+    private IEnumerator AbrirJuegoWindows(string rutaPC)
     {
-        Debug.Log(
-            "RECUPERANDO XR..."
-        );
+        abriendo = true;
 
+        string rutaCompleta = "";
 
-        if (XRGeneralSettings.Instance == null)
+        try
         {
+            string carpeta =
+                Directory.GetParent(
+                    Application.dataPath
+                ).FullName;
+
+            rutaCompleta =
+                Path.GetFullPath(
+                    Path.Combine(
+                        carpeta,
+                        rutaPC.Trim()
+                    )
+                );
+        }
+        catch (Exception error)
+        {
+            Debug.LogError(
+                "ERROR EN RUTA PC:\n" + error
+            );
+        }
+
+        if (string.IsNullOrEmpty(rutaCompleta) ||
+            !File.Exists(rutaCompleta))
+        {
+            Debug.LogError(
+                "NO EXISTE EXE: " + rutaCompleta
+            );
+
+            abriendo = false;
             yield break;
         }
 
+        // ========================================
+        // LIBERAR XR EN WINDOWS
+        // ========================================
 
-        XRManagerSettings manager =
-            XRGeneralSettings
-                .Instance
-                .Manager;
+        XRManagerSettings xr = null;
 
-
-        if (manager == null)
+        if (XRGeneralSettings.Instance != null)
         {
-            yield break;
+            xr =
+                XRGeneralSettings.Instance.Manager;
         }
 
+        bool liberarXR =
+            xr != null && xr.isInitializationComplete;
+
+        if (liberarXR)
+        {
+            xr.StopSubsystems();
+            xr.DeinitializeLoader();
+
+            yield return
+                new WaitForSecondsRealtime(0.8f);
+        }
+
+        // ========================================
+        // ABRIR EXE
+        // ========================================
+
+        Process proceso = null;
+
+        try
+        {
+            ProcessStartInfo info =
+                new ProcessStartInfo();
+
+            info.FileName = rutaCompleta;
+
+            info.WorkingDirectory =
+                Path.GetDirectoryName(rutaCompleta);
+
+            info.UseShellExecute = false;
+
+            proceso = Process.Start(info);
+
+            Debug.Log(
+                "EXE SOLICITADO: " + rutaCompleta
+            );
+        }
+        catch (Exception error)
+        {
+            Debug.LogError(
+                "ERROR ABRIENDO EXE:\n" + error
+            );
+        }
+
+        if (proceso == null)
+        {
+            if (liberarXR)
+            {
+                yield return StartCoroutine(
+                    RecuperarXR(xr)
+                );
+            }
+
+            abriendo = false;
+            yield break;
+        }
 
         yield return
-            manager.InitializeLoader();
+            new WaitForSecondsRealtime(1.5f);
 
+        bool sigueAbierto = false;
 
-        if (manager.activeLoader == null)
+        try
+        {
+            sigueAbierto = !proceso.HasExited;
+        }
+        catch (Exception error)
+        {
+            Debug.LogWarning(
+                "NO SE PUDO COMPROBAR EXE: " +
+                error.Message
+            );
+        }
+
+        proceso.Dispose();
+
+        if (!sigueAbierto)
+        {
+            Debug.LogError(
+                "EL EXE SE CERRO AL ARRANCAR"
+            );
+
+            if (liberarXR)
+            {
+                yield return StartCoroutine(
+                    RecuperarXR(xr)
+                );
+            }
+
+            abriendo = false;
+            yield break;
+        }
+
+        Debug.Log(
+            "JUEGO ABIERTO. CERRANDO LOBBY PC."
+        );
+
+#if UNITY_EDITOR
+
+        UnityEditor.EditorApplication.isPlaying = false;
+
+#else
+
+        Application.Quit();
+
+#endif
+    }
+
+    // ============================================
+    // RECUPERAR XR EN WINDOWS
+    // ============================================
+
+    private IEnumerator RecuperarXR(
+        XRManagerSettings xr)
+    {
+        if (xr == null)
+            yield break;
+
+        if (xr.activeLoader == null)
+        {
+            yield return xr.InitializeLoader();
+        }
+
+        if (xr.activeLoader != null)
+        {
+            xr.StartSubsystems();
+
+            Debug.Log(
+                "XR RECUPERADO"
+            );
+        }
+        else
         {
             Debug.LogError(
                 "NO SE PUDO RECUPERAR XR"
             );
-
-
-            yield break;
         }
-
-
-        manager.StartSubsystems();
-
-
-        Debug.Log(
-            "XR RECUPERADO"
-        );
     }
+
+#endif
 }
