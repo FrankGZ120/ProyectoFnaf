@@ -38670,11 +38670,11 @@ MonoBehaviour:
   m_GameObject: {fileID: 1758102121}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 4de3ba622eb9698448ee32ec5a9113e5, type: 3}
+  m_Script: {fileID: 11500000, guid: 1ae51aebfdfbeff4dbae3544c9d8af5b, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LanzadorJuegoPCVR
-  regresarConYIzquierda: 1
   rutaRelativaLobby: ..\..\LOBBYEXES\LobbyCasitasDelTerror.exe
+  paqueteLobbyQuest: com.casitasdelterror.lobby
   esperaLiberarXR: 0.8
   esperaConfirmarProceso: 1.5
 --- !u!4 &1758102123
